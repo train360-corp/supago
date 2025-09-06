@@ -74,7 +74,7 @@ func Service(dataDir string, password string, jwtSecret string) (*types.Service,
 		StopTimeout: utils.Pointer(10 * time.Second),
 		Aliases:     []string{"db"},
 		Labels: map[string]string{
-			"projconf.service": "postgres",
+			"supago.service": ContainerName,
 		},
 		Healthcheck: &container.HealthConfig{
 			Test:     []string{"CMD", "pg_isready", "-U", "postgres", "-h", "localhost"},
@@ -86,8 +86,7 @@ func Service(dataDir string, password string, jwtSecret string) (*types.Service,
 			"postgres",
 			"-c", "config_file=/etc/postgresql/postgresql.conf",
 			"-c", "log_min_messages=error",
-			"-c", "wal_level=minimal",
-			"-c", "max_wal_senders=0",
+			"-c", "archive_mode=off",
 		},
 		Env: []string{
 			"POSTGRES_HOST=/var/run/postgresql",

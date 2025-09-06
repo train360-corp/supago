@@ -128,24 +128,29 @@ func (runner *Runner) Run(ctx context.Context, svc *types.Service) (func(context
 				utils.Logger().Errorf("unable to check %v container %s health: %v", svc, utils.ShortStr(ctr.ID), err)
 				return fmt.Errorf("unable to check %v container %s health: %v", svc, utils.ShortStr(ctr.ID), err)
 			}
-			switch inspected.State.Health.Status {
-			case container.NoHealthcheck:
-				utils.Logger().Warnf("%v container %s does not have a health-check (continuing)", svc, utils.ShortStr(ctr.ID))
-				return nil
-			case container.Healthy:
-				utils.Logger().Debugf("%v container %s is healthy (continuing)", svc, utils.ShortStr(ctr.ID))
-				return nil
-			case container.Starting:
-				utils.Logger().Debugf("%v container %s is still starting (retrying in 5 seconds...)", svc, utils.ShortStr(ctr.ID))
-				time.Sleep(5 * time.Second)
-				return healthcheck(retry + 1)
-			case container.Unhealthy:
-				utils.Logger().Errorf("%v container %s is unhealthy", svc, utils.ShortStr(ctr.ID))
-				return fmt.Errorf("%v container %s is unhealthy", svc, utils.ShortStr(ctr.ID))
-			default:
-				utils.Logger().Errorf("%v container %s unhandled status: %v", svc, utils.ShortStr(ctr.ID), inspected.State.Health.Status)
-				return fmt.Errorf("%v container %s unhandled status: %v", svc, utils.ShortStr(ctr.ID), inspected.State.Health.Status)
+
+			if inspected.State != nil && inspected.State.Health != nil {
+				switch inspected.State.Health.Status {
+				case container.NoHealthcheck:
+					utils.Logger().Warnf("%v container %s does not have a health-check (continuing)", svc, utils.ShortStr(ctr.ID))
+					return nil
+				case container.Healthy:
+					utils.Logger().Debugf("%v container %s is healthy (continuing)", svc, utils.ShortStr(ctr.ID))
+					return nil
+				case container.Starting:
+					utils.Logger().Debugf("%v container %s is still starting (retrying in 5 seconds...)", svc, utils.ShortStr(ctr.ID))
+					time.Sleep(5 * time.Second)
+					return healthcheck(retry + 1)
+				case container.Unhealthy:
+					utils.Logger().Errorf("%v container %s is unhealthy", svc, utils.ShortStr(ctr.ID))
+					return fmt.Errorf("%v container %s is unhealthy", svc, utils.ShortStr(ctr.ID))
+				default:
+					utils.Logger().Errorf("%v container %s unhandled status: %v", svc, utils.ShortStr(ctr.ID), inspected.State.Health.Status)
+					return fmt.Errorf("%v container %s unhandled status: %v", svc, utils.ShortStr(ctr.ID), inspected.State.Health.Status)
+				}
 			}
+
+			return nil
 		}
 
 		// start container

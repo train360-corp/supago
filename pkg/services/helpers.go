@@ -107,10 +107,16 @@ func (runner *Runner) create(ctx context.Context, svc *types.Service) (*containe
 		return nil, fmt.Errorf("network not initialized")
 	}
 
+	if svc.Labels == nil {
+		svc.Labels = map[string]string{}
+	}
+	svc.Labels["com.docker.compose.project"] = "supago"
+
 	exposedPorts, portBindings := ports(svc)
 	if resp, err := runner.docker.ContainerCreate(ctx,
 		&container.Config{
 			Image:        svc.Image,
+			Entrypoint:   svc.Entrypoint,
 			Cmd:          svc.Cmd,
 			Env:          svc.Env,
 			OpenStdin:    true,  // keep a stdin pipe open from our process

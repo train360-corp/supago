@@ -17,6 +17,7 @@ type Service struct {
 	Image       string
 	Name        string
 	Aliases     []string // network aliases
+	Entrypoint  []string
 	Cmd         []string
 	Env         []string
 	Labels      map[string]string

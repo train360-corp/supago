@@ -6,14 +6,16 @@ import (
 	"github.com/train360-corp/supago/pkg/types"
 )
 
-const ContainerName = "supabase-meta"
+const ContainerName = "supago-meta"
 
 func Service(databasePassword string) *types.Service {
 	return &types.Service{
 		Image:   "supabase/postgres-meta:v0.91.0",
 		Name:    ContainerName,
 		Aliases: []string{"meta"},
-		Cmd:     nil,
+		Labels: map[string]string{
+			"supago.service": ContainerName,
+		},
 		Env: []string{
 			fmt.Sprintf("%s=%s", "PG_META_PORT", "8080"),
 			fmt.Sprintf("%s=%s", "PG_META_DB_HOST", postgres.ContainerName),
@@ -22,6 +24,5 @@ func Service(databasePassword string) *types.Service {
 			fmt.Sprintf("%s=%s", "PG_META_DB_USER", "supabase_admin"),
 			fmt.Sprintf("%s=%s", "PG_META_DB_PASSWORD", databasePassword),
 		},
-		Ports: []uint16{8080},
 	}
 }

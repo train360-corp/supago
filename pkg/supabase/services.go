@@ -3,8 +3,12 @@ package supabase
 import (
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/train360-corp/supago/pkg/services/analytics"
+	"github.com/train360-corp/supago/pkg/services/kong"
 	"github.com/train360-corp/supago/pkg/services/meta"
 	"github.com/train360-corp/supago/pkg/services/postgres"
+	"github.com/train360-corp/supago/pkg/services/postgrest"
+	"github.com/train360-corp/supago/pkg/services/studio"
 	"github.com/train360-corp/supago/pkg/types"
 	"github.com/train360-corp/supago/pkg/utils"
 	"time"
@@ -16,6 +20,10 @@ type Config struct {
 	JwtSecret             string
 	PublicJwtKey          string
 	PrivateJwtKey         string
+	DashboardUsername     string
+	DashboardPassword     string
+	LogFlarePrivateKey    string
+	LogFlarePublicKey     string
 }
 
 // GetJwts returns deterministic JWTs configured for supabase based on a fixed secret
@@ -70,6 +78,10 @@ func GetRandomConfig() (*Config, error) {
 			JwtSecret:             jwtSecret,
 			PublicJwtKey:          jwts.Public,
 			PrivateJwtKey:         jwts.Private,
+			DashboardUsername:     utils.RandomString(32),
+			DashboardPassword:     utils.RandomString(32),
+			LogFlarePrivateKey:    utils.RandomString(32),
+			LogFlarePublicKey:     utils.RandomString(32),
 		}, nil
 	}
 }
@@ -80,13 +92,46 @@ func GetServices(config *Config) (*[]types.Service, error) {
 
 	// add postgres
 	if db, err := postgres.Service(config.DatabaseDataDirectory, config.DatabasePassword, config.JwtSecret); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to construct postgrest service: %v", err)
 	} else {
 		services = append(services, *db)
 	}
 
-	// add meta
-	services = append(services, *meta.Service(config.DatabasePassword))
+	// add kong
+	if gateway, err := kong.Service(kong.Props{
+		Keys: kong.Keys{
+			Public:  config.PublicJwtKey,
+			Private: config.PrivateJwtKey,
+		},
+		Dashboard: kong.Dashboard{
+			Username: config.DashboardUsername,
+			Password: config.DashboardPassword,
+		},
+	}); err != nil {
+		return nil, fmt.Errorf("failed to construct gateway service: %v", err)
+	} else {
+		services = append(services, *gateway)
+	}
+
+	// add remaining services
+	services = append(services,
+		*analytics.Service(config.DatabasePassword, config.LogFlarePublicKey, config.LogFlarePrivateKey),
+		*meta.Service(config.DatabasePassword),
+		*postgrest.Service(config.DatabasePassword, config.JwtSecret),
+		*studio.Service(studio.Props{
+			Keys: studio.Keys{
+				Public:  config.PublicJwtKey,
+				Private: config.PrivateJwtKey,
+				Secret:  config.JwtSecret,
+			},
+			Database: studio.Database{
+				Password: config.DatabasePassword,
+			},
+			LogFlare: studio.LogFlare{
+				Password: config.LogFlarePrivateKey,
+			},
+		}),
+	)
 
 	return &services, nil
 }

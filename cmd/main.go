@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/train360-corp/supago/pkg/services"
-	"github.com/train360-corp/supago/pkg/services/supabase"
+	"github.com/train360-corp/supago/pkg/supabase"
 	"github.com/train360-corp/supago/pkg/utils"
 	"go.uber.org/zap/zapcore"
 	"os"
@@ -35,7 +35,7 @@ func Execute() {
 	if config, err := supabase.GetRandomConfig(); err != nil {
 		panic(fmt.Sprintf("failed to generate supabase config: %v", err))
 	} else {
-		config.DatabaseDataDirectory = filepath.Join(filepath.Dir(cwd), "data", "postgres")
+		config.DatabaseDataDirectory = filepath.Join(cwd, "data", "postgres")
 		if svcs, err := supabase.GetServices(config); err != nil {
 			panic(err)
 		} else {
