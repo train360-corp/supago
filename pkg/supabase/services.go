@@ -8,6 +8,7 @@ import (
 	"github.com/train360-corp/supago/pkg/services/meta"
 	"github.com/train360-corp/supago/pkg/services/postgres"
 	"github.com/train360-corp/supago/pkg/services/postgrest"
+	"github.com/train360-corp/supago/pkg/services/realtime"
 	"github.com/train360-corp/supago/pkg/services/studio"
 	"github.com/train360-corp/supago/pkg/types"
 	"github.com/train360-corp/supago/pkg/utils"
@@ -118,6 +119,7 @@ func GetServices(config *Config) (*[]types.Service, error) {
 		*analytics.Service(config.DatabasePassword, config.LogFlarePublicKey, config.LogFlarePrivateKey),
 		*meta.Service(config.DatabasePassword),
 		*postgrest.Service(config.DatabasePassword, config.JwtSecret),
+		*realtime.Service(config.DatabasePassword, config.PublicJwtKey, config.JwtSecret),
 		*studio.Service(studio.Props{
 			Keys: studio.Keys{
 				Public:  config.PublicJwtKey,
