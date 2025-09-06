@@ -184,6 +184,15 @@ func (runner *Runner) Run(ctx context.Context, svc *types.Service) (func(context
 			return nil, err
 		}
 
+		// after start
+		if svc.AfterStart != nil {
+			if err := svc.AfterStart(ctx, runner.docker, ctr.ID); err != nil {
+				stopContainer(ctx)
+				removeContainer(ctx)
+				return nil, fmt.Errorf("AfterStart failed for %v: %v", svc, err)
+			}
+		}
+
 		// attach to container (keep this connection open while app is alive)
 		if att, err := runner.docker.ContainerAttach(ctx, ctr.ID, container.AttachOptions{
 			Stdin:  true,
@@ -213,7 +222,7 @@ func (runner *Runner) Run(ctx context.Context, svc *types.Service) (func(context
 				utils.Logger().Debugf("completed stop and detach sequence for %v container %s", svc, utils.ShortStr(ctr.ID))
 			}
 
-			utils.Logger().Infof("%v is alive (container %s)", svc, utils.ShortStr(ctr.ID))
+			utils.Logger().Infof("started %v (container %s)", svc, utils.ShortStr(ctr.ID))
 			return detach, nil
 		}
 	}

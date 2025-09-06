@@ -22,11 +22,6 @@ func Service(databasePassword string) *types.Service {
 			fmt.Sprintf("%s=%s", "PG_META_DB_USER", "supabase_admin"),
 			fmt.Sprintf("%s=%s", "PG_META_DB_PASSWORD", databasePassword),
 		},
-		Labels:      nil,
-		Mounts:      nil,
-		Ports:       nil,
-		Healthcheck: nil,
-		StopSignal:  nil,
-		StopTimeout: nil,
+		Ports: []uint16{8080},
 	}
 }

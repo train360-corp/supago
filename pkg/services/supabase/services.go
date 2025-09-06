@@ -3,6 +3,7 @@ package supabase
 import (
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/train360-corp/supago/pkg/services/meta"
 	"github.com/train360-corp/supago/pkg/services/postgres"
 	"github.com/train360-corp/supago/pkg/types"
 	"github.com/train360-corp/supago/pkg/utils"
@@ -83,6 +84,9 @@ func GetServices(config *Config) (*[]types.Service, error) {
 	} else {
 		services = append(services, *db)
 	}
+
+	// add meta
+	services = append(services, *meta.Service(config.DatabasePassword))
 
 	return &services, nil
 }

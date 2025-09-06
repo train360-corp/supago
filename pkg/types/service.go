@@ -1,9 +1,11 @@
 package types
 
 import (
+	"context"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 	"github.com/train360-corp/supago/pkg/utils"
 	"os"
@@ -23,6 +25,7 @@ type Service struct {
 	Healthcheck *container.HealthConfig
 	StopSignal  *string
 	StopTimeout *time.Duration
+	AfterStart  func(ctx context.Context, docker *client.Client, containerID string) error
 	stop        func()
 }
 

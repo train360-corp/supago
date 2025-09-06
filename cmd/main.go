@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -58,14 +59,21 @@ func Execute() {
 			utils.Logger().Warn("commencing shutdown")
 
 			// Give ongoing work time to finish.
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
 			// stop in reverse order for dependency purposes
+			var wg sync.WaitGroup
 			for i := len(stops) - 1; i >= 0; i-- {
-				stops[i](shutdownCtx)
+				wg.Add(1)
+				go func(task func(context.Context)) {
+					defer wg.Done()
+					task(shutdownCtx)
+				}(stops[i])
 			}
 
+			// wait for all goroutines to finish
+			wg.Wait()
 			utils.Logger().Warn("shutdown complete")
 		}
 	}

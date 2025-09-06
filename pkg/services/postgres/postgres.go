@@ -1,14 +1,17 @@
 package postgres
 
 import (
+	"context"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/client"
 	postgres "github.com/train360-corp/supago/pkg/services/postgres/embeds"
 	"github.com/train360-corp/supago/pkg/types"
 	"github.com/train360-corp/supago/pkg/utils"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -96,6 +99,35 @@ func Service(dataDir string, password string, jwtSecret string) (*types.Service,
 			"POSTGRES_DB=postgres",
 			fmt.Sprintf("JWT_SECRET=%s", jwtSecret),
 			"JWT_EXP=3600",
+		},
+		AfterStart: func(ctx context.Context, docker *client.Client, cid string) error {
+			// patch postgres password
+			output, err := utils.ExecInContainer(ctx, docker, cid, []string{
+				"psql",
+				"-h", "127.0.0.1",
+				"-U", "supabase_admin",
+				"-d", "postgres",
+				"-v", "ON_ERROR_STOP=1",
+				"-c",
+				fmt.Sprintf(`
+ALTER USER anon                    WITH PASSWORD '%s';
+ALTER USER authenticated           WITH PASSWORD '%s';
+ALTER USER authenticator           WITH PASSWORD '%s';
+ALTER USER dashboard_user          WITH PASSWORD '%s';
+ALTER USER pgbouncer               WITH PASSWORD '%s';
+ALTER USER postgres                WITH PASSWORD '%s';
+ALTER USER service_role            WITH PASSWORD '%s';
+ALTER USER supabase_admin          WITH PASSWORD '%s';
+ALTER USER supabase_auth_admin     WITH PASSWORD '%s';
+ALTER USER supabase_read_only_user WITH PASSWORD '%s';
+ALTER USER supabase_replication_admin WITH PASSWORD '%s';
+ALTER USER supabase_storage_admin  WITH PASSWORD '%s';
+`, password, password, password, password, password, password, password, password, password, password, password, password),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to patch postgres password: %v (%s)", err, strings.ReplaceAll(strings.TrimSpace(output), "\n", "\\n"))
+			}
+			return nil
 		},
 	}, nil
 }
