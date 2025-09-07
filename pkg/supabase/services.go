@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/train360-corp/supago/pkg/services/analytics"
+	"github.com/train360-corp/supago/pkg/services/auth"
 	"github.com/train360-corp/supago/pkg/services/imgproxy"
 	"github.com/train360-corp/supago/pkg/services/kong"
 	"github.com/train360-corp/supago/pkg/services/meta"
@@ -144,6 +145,28 @@ func GetServices(config *Config) (*[]types.Service, error) {
 	// add remaining services
 	services = append(services,
 		*analytics.Service(config.DatabasePassword, config.LogFlarePublicKey, config.LogFlarePrivateKey),
+		*auth.Service(auth.Props{
+			URLs: auth.URLs{
+				Site: "http://127.0.0.1:3000",
+				Kong: "http://127.0.0.1:8000",
+			},
+			SMTP: auth.SMTP{
+				Host: "supabase-mail",
+				Port: 2500,
+				User: "fake_mail_user",
+				Pass: "fake_mail_password",
+				From: auth.SMTPFrom{
+					Email: "admin@example.com",
+					Name:  "fake_sender",
+				},
+			},
+			DB: auth.Database{
+				Password: config.DatabasePassword,
+			},
+			Keys: auth.Keys{
+				Secret: config.JwtSecret,
+			},
+		}),
 		*meta.Service(config.DatabasePassword),
 		*postgrest.Service(config.DatabasePassword, config.JwtSecret),
 		*fs, // must be after db, imgproxy, and postgrest
