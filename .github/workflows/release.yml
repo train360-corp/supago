@@ -83,9 +83,36 @@ jobs:
           # Expose for next steps
           echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
 
+      - name: Generate changelog from conventional commits
+        id: changelog
+        run: |
+          # Get previous and new tag
+          prev_tag=$(git tag --sort=version:refname | tail -n2 | head -n1 || true)
+          new_tag="${{ steps.bump.outputs.new_tag }}"
+          
+          if [ -z "$prev_tag" ]; then
+          range=""
+          else
+          range="$prev_tag..HEAD"
+          fi
+          
+          echo "Generating changelog for $range"
+          
+          # Basic conventional-commit grouping
+          notes=$(git log $range --pretty=format:"%s" |
+          grep -E "^(feat|fix|chore|docs|refactor|perf|test|ci):" |
+          sed -E "s/^(feat:)/### ✨ Features\n-/; s/^(fix:)/### 🐛 Fixes\n-/; s/^(chore:)/### 🛠 Chores\n-/; s/^(docs:)/### 📚 Docs\n-/; s/^(refactor:)/### ♻️ Refactor\n-/; s/^(perf:)/### ⚡ Performance\n-/; s/^(test:)/### ✅ Tests\n-/; s/^(ci:)/### 🤖 CI\n-/")
+          
+          # Collapse duplicates headers
+          release_notes=$(echo "$notes" | awk '!a[$0]++')
+          
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$release_notes" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.bump.outputs.tag }}
-          generate_release_notes: true
+          tag_name: ${{ steps.bump.outputs.new_tag }}
+          body: ${{ steps.changelog.outputs.release_notes }}
           make_latest: true
