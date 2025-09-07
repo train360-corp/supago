@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      type:
+        description: "Version bump type"
+        type: choice
+        options:
+          - MAJOR
+          - MINOR
+          - PATCH
+        default: PATCH
+        required: true
+
+permissions:
+  contents: write  # needed to push tags & create releases
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # fetch tags/history
+
+      - name: Set up Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine next version and tag
+        id: bump
+        env:
+          BUMP_TYPE: ${{ github.event.inputs.type }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Get latest semver tag (vX.Y.Z). If none, start at v0.0.0
+          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1 || true)"
+          if [[ -z "$latest" ]]; then
+            latest="v0.0.0"
+          fi
+
+          echo "Latest tag: $latest"
+
+          # Strip leading v and split into parts
+          ver="${latest#v}"
+          IFS='.' read -r major minor patch <<<"$ver"
+
+          case "$BUMP_TYPE" in
+            MAJOR)
+              major=$((major + 1)); minor=0; patch=0
+              ;;
+            MINOR)
+              minor=$((minor + 1)); patch=0
+              ;;
+            PATCH)
+              patch=$((patch + 1))
+              ;;
+            *)
+              echo "Unknown bump type: $BUMP_TYPE" >&2
+              exit 1
+              ;;
+          esac
+
+          new_tag="v${major}.${minor}.${patch}"
+          echo "New tag: $new_tag"
+
+          # Fail fast if tag already exists (shouldn't, but protects against races)
+          if git rev-parse -q --verify "refs/tags/$new_tag" >/dev/null; then
+            echo "Tag $new_tag already exists." >&2
+            exit 1
+          fi
+
+          # Create annotated tag locally and push
+          git tag -a "$new_tag" -m "Release $new_tag"
+          git push origin "$new_tag"
+
+          # Expose for next steps
+          echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.tag }}
+          generate_release_notes: true
+          make_latest: true
