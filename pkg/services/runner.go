@@ -20,11 +20,13 @@ type Runner struct {
 	network               *network.Summary
 	networkName           string
 	isProperlyInitialized bool
+	stopFuncs             *[]*func()
 }
 
 func NewRunner(networkName string) (*Runner, error) {
 	var runner Runner
 	runner.networkName = strings.TrimSpace(networkName)
+	runner.stopFuncs = &[]*func(){}
 	if runner.networkName == "" {
 		return nil, errors.New("runner's NetworkName is required but empty")
 	}
@@ -60,66 +62,101 @@ func NewRunner(networkName string) (*Runner, error) {
 	return &runner, nil
 }
 
-func (runner *Runner) Run(ctx context.Context, svc *types.Service) (func(context.Context), error) {
+func (runner *Runner) Shutdown() {
+	utils.Logger().Warn("commencing shutdown sequence")
+
+	// stop in reverse order for dependency purposes
+	var wg sync.WaitGroup
+	for i := len(*runner.stopFuncs) - 1; i >= 0; i-- {
+		wg.Add(1)
+		go func(task func()) {
+			defer wg.Done()
+			task()
+		}(*(*runner.stopFuncs)[i])
+	}
+
+	// wait for all goroutines to finish
+	wg.Wait()
+	utils.Logger().Warn("shutdown complete")
+}
+
+func (runner *Runner) Run(ctx context.Context, svc *types.Service) error {
+
+	var ctr *container.CreateResponse
+	stopContainer := sync.OnceFunc(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if ctr == nil {
+			utils.Logger().Debugf("stopContainer skipped (no container initialized)")
+			return
+		}
+		utils.Logger().Debugf("stopping %v container %s", svc, utils.ShortStr(ctr.ID))
+		stopOptions := container.StopOptions{}
+		if svc.StopTimeout != nil {
+			stopOptions.Timeout = utils.Pointer(int(svc.StopTimeout.Seconds()))
+		}
+		if svc.StopSignal != nil {
+			stopOptions.Signal = *svc.StopSignal
+		}
+		if err := runner.docker.ContainerStop(shutdownCtx, ctr.ID, stopOptions); err != nil {
+			utils.Logger().Errorf("failed to stop %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
+		} else {
+			utils.Logger().Warnf("stopped %v container", svc)
+		}
+	})
+
+	removeContainer := sync.OnceFunc(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if ctr == nil {
+			utils.Logger().Debugf("removeContainer skipped (no container initialized)")
+			return
+		}
+		utils.Logger().Debugf("removing %v container %s ", svc, utils.ShortStr(ctr.ID))
+		if err := runner.docker.ContainerRemove(shutdownCtx, ctr.ID, container.RemoveOptions{
+			RemoveVolumes: true,
+			RemoveLinks:   true,
+			Force:         true,
+		}); err != nil {
+			isAlreadyShuttingDownError := regexp.MustCompile(`^Error response from daemon: removal of container [a-f0-9]+ is already in progress$`)
+			if isAlreadyShuttingDownError.MatchString(err.Error()) {
+				utils.Logger().Debugf("confirmed removal of %v container %s in progress", svc, utils.ShortStr(ctr.ID))
+			} else {
+				utils.Logger().Errorf("failed to remove %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
+			}
+		} else {
+			utils.Logger().Debugf("removed %v container", svc)
+		}
+	})
+
+	done := func(err error) error {
+		stopContainer()
+		removeContainer()
+		return err
+	}
 
 	if !runner.isProperlyInitialized {
 		utils.Logger().Debugf("detected improperly initialized Runner")
-		return nil, fmt.Errorf("runner not properly initialized; Runner should not be directly instantiated (call the services.NewRunner(...) func instead)")
+		return done(fmt.Errorf("runner not properly initialized; Runner should not be directly instantiated (call the services.NewRunner(...) func instead)"))
 	}
 
 	utils.Logger().Infof("starting %v", svc)
 
 	// ensure network exists
 	if err := runner.ensureNetwork(ctx); err != nil {
-		return nil, err
+		return done(err)
 	}
 
 	// pull image
 	if err := runner.pull(ctx, svc); err != nil {
-		return nil, err
+		return done(err)
 	}
 
 	// create container
-	if ctr, err := runner.create(ctx, svc); err != nil {
-		return nil, err
+	if containerCreate, err := runner.create(ctx, svc); err != nil {
+		return done(err)
 	} else {
-		var once sync.Once
-		stopContainer := func(ctx context.Context) {
-			once.Do(func() {
-				utils.Logger().Debugf("stopping %v container %s", svc, utils.ShortStr(ctr.ID))
-				stopOptions := container.StopOptions{}
-				if svc.StopTimeout != nil {
-					stopOptions.Timeout = utils.Pointer(int(svc.StopTimeout.Seconds()))
-				}
-				if svc.StopSignal != nil {
-					stopOptions.Signal = *svc.StopSignal
-				}
-				if err := runner.docker.ContainerStop(ctx, ctr.ID, stopOptions); err != nil {
-					utils.Logger().Errorf("failed to stop %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
-				} else {
-					utils.Logger().Warnf("stopped %v container", svc)
-				}
-			})
-		}
-
-		removeContainer := func(ctx context.Context) {
-			utils.Logger().Debugf("removing %v container %s ", svc, utils.ShortStr(ctr.ID))
-			if err := runner.docker.ContainerRemove(ctx, ctr.ID, container.RemoveOptions{
-				RemoveVolumes: true,
-				RemoveLinks:   true,
-				Force:         true,
-			}); err != nil {
-				isAlreadyShuttingDownError := regexp.MustCompile(`^Error response from daemon: removal of container [a-f0-9]+ is already in progress$`)
-				if isAlreadyShuttingDownError.MatchString(err.Error()) {
-					utils.Logger().Debugf("confirmed removal of %v container %s in progress", svc, utils.ShortStr(ctr.ID))
-				} else {
-					utils.Logger().Errorf("failed to remove %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
-				}
-			} else {
-				utils.Logger().Debugf("removed %v container", svc)
-			}
-		}
-
+		ctr = containerCreate
 		var healthcheck func(retry int) error
 		healthcheck = func(retry int) error {
 			utils.Logger().Debugf("checking %v container %s health (retry=%d)", svc, utils.ShortStr(ctr.ID), retry)
@@ -157,9 +194,7 @@ func (runner *Runner) Run(ctx context.Context, svc *types.Service) (func(context
 		utils.Logger().Debugf("starting %v conainter %s", svc, utils.ShortStr(ctr.ID))
 		if err := runner.docker.ContainerStart(ctx, ctr.ID, container.StartOptions{}); err != nil {
 			utils.Logger().Errorf("failed to start %v container: %v", svc, err)
-			stopContainer(ctx)
-			removeContainer(ctx)
-			return nil, fmt.Errorf("failed to start %v container: %v", svc, err)
+			return done(fmt.Errorf("failed to start %v container: %v", svc, err))
 		}
 
 		// listen to status
@@ -173,28 +208,22 @@ func (runner *Runner) Run(ctx context.Context, svc *types.Service) (func(context
 				} else {
 					utils.Logger().Debugf("wait exited (context-cancelled) for %v container %s", svc, utils.ShortStr(ctr.ID))
 				}
-				stopContainer(context.Background())
-				removeContainer(context.Background())
+				_ = done(fmt.Errorf("wait exited: %v", err))
 			case st := <-statusCh: // container exited (possibly immediately)
 				utils.Logger().Debugf("%v container %s exited with status: %v", svc, utils.ShortStr(ctr.ID), st)
-				stopContainer(ctx)
-				removeContainer(ctx)
+				_ = done(fmt.Errorf("%v container %s exited with status: %v", svc, utils.ShortStr(ctr.ID), st))
 			}
 		}()
 
 		// perform healthcheck
 		if err := healthcheck(0); err != nil {
-			stopContainer(ctx)
-			removeContainer(ctx)
-			return nil, err
+			return done(err)
 		}
 
 		// after start
 		if svc.AfterStart != nil {
 			if err := svc.AfterStart(ctx, runner.docker, ctr.ID); err != nil {
-				stopContainer(ctx)
-				removeContainer(ctx)
-				return nil, fmt.Errorf("AfterStart failed for %v: %v", svc, err)
+				return done(fmt.Errorf("AfterStart failed for %v: %v", svc, err))
 			}
 		}
 
@@ -206,29 +235,22 @@ func (runner *Runner) Run(ctx context.Context, svc *types.Service) (func(context
 			Stderr: false,
 		}); err != nil {
 			utils.Logger().Errorf("attach failed for %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
-			stopContainer(ctx)
-			removeContainer(ctx)
-			return nil, fmt.Errorf("attach failed for %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
+			return done(fmt.Errorf("attach failed for %v container %s: %v", svc, utils.ShortStr(ctr.ID), err))
 		} else {
-			detach := func(ctx context.Context) {
+			stop := func() {
 				utils.Logger().Debugf("stop and detach sequence triggered for %v container %s", svc, utils.ShortStr(ctr.ID))
-
 				if err := att.CloseWrite(); err != nil {
 					utils.Logger().Errorf("failed to close stdin for %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
 				}
 				att.Close()
-
-				stopContainer(ctx)
-				removeContainer(ctx)
-
-				// give a brief moment for AutoRemove
-				time.Sleep(200 * time.Millisecond)
-
+				_ = done(nil)
 				utils.Logger().Debugf("completed stop and detach sequence for %v container %s", svc, utils.ShortStr(ctr.ID))
 			}
+			stops := append(*runner.stopFuncs, &stop)
+			runner.stopFuncs = &stops
 
 			utils.Logger().Infof("started %v (container %s)", svc, utils.ShortStr(ctr.ID))
-			return detach, nil
+			return nil
 		}
 	}
 }

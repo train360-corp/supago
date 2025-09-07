@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/train360-corp/supago/pkg/services/analytics"
+	"github.com/train360-corp/supago/pkg/services/imgproxy"
 	"github.com/train360-corp/supago/pkg/services/kong"
 	"github.com/train360-corp/supago/pkg/services/meta"
 	"github.com/train360-corp/supago/pkg/services/postgres"
@@ -25,6 +26,7 @@ type Config struct {
 	DashboardPassword     string
 	LogFlarePrivateKey    string
 	LogFlarePublicKey     string
+	StorageDirectory      string
 }
 
 // GetJwts returns deterministic JWTs configured for supabase based on a fixed secret
@@ -74,15 +76,14 @@ func GetRandomConfig() (*Config, error) {
 		return nil, err
 	} else {
 		return &Config{
-			DatabaseDataDirectory: utils.GetTempDir(),
-			DatabasePassword:      utils.RandomString(32),
-			JwtSecret:             jwtSecret,
-			PublicJwtKey:          jwts.Public,
-			PrivateJwtKey:         jwts.Private,
-			DashboardUsername:     utils.RandomString(32),
-			DashboardPassword:     utils.RandomString(32),
-			LogFlarePrivateKey:    utils.RandomString(32),
-			LogFlarePublicKey:     utils.RandomString(32),
+			DatabasePassword:   utils.RandomString(32),
+			JwtSecret:          jwtSecret,
+			PublicJwtKey:       jwts.Public,
+			PrivateJwtKey:      jwts.Private,
+			DashboardUsername:  utils.RandomString(32),
+			DashboardPassword:  utils.RandomString(32),
+			LogFlarePrivateKey: utils.RandomString(32),
+			LogFlarePublicKey:  utils.RandomString(32),
 		}, nil
 	}
 }
@@ -96,6 +97,13 @@ func GetServices(config *Config) (*[]types.Service, error) {
 		return nil, fmt.Errorf("failed to construct postgrest service: %v", err)
 	} else {
 		services = append(services, *db)
+	}
+
+	// add imgproxy
+	if img, err := imgproxy.Service(config.StorageDirectory); err != nil {
+		return nil, fmt.Errorf("failed to construct imgproxy service: %v", err)
+	} else {
+		services = append(services, *img)
 	}
 
 	// add kong

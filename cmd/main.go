@@ -10,8 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync"
-	"time"
 )
 
 func Execute() {
@@ -27,59 +25,44 @@ func Execute() {
 	} else {
 		utils.OverrideLogger(logger)
 	}
+	defer utils.Logger().Sync()
 
 	// Create a root ctx that is canceled on SIGINT/SIGTERM.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if config, err := supabase.GetRandomConfig(); err != nil {
+	// create config to run supabase
+	config, err := supabase.GetRandomConfig()
+	if err != nil {
 		panic(fmt.Sprintf("failed to generate supabase config: %v", err))
-	} else {
-		config.DatabaseDataDirectory = filepath.Join(cwd, "data", "postgres")
-		if svcs, err := supabase.GetServices(config); err != nil {
-			panic(err)
-		} else {
-			runner, err := services.NewRunner("supago-main-test-net")
-			if err != nil {
-				panic(err)
-			}
+	}
+	config.DatabaseDataDirectory = filepath.Join(cwd, "data", "postgres")
+	config.StorageDirectory = filepath.Join(cwd, "data", "storage")
 
-			var stops []func(context.Context)
-			gracefulShutdown := func() {
-				utils.Logger().Warn("commencing shutdown")
+	// get supabase services from config
+	svcs, err := supabase.GetServices(config)
+	if err != nil {
+		panic(err)
+	}
 
-				// Give ongoing work time to finish.
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				defer cancel()
-
-				// stop in reverse order for dependency purposes
-				var wg sync.WaitGroup
-				for i := len(stops) - 1; i >= 0; i-- {
-					wg.Add(1)
-					go func(task func(context.Context)) {
-						defer wg.Done()
-						task(shutdownCtx)
-					}(stops[i])
-				}
-
-				// wait for all goroutines to finish
-				wg.Wait()
-				utils.Logger().Warn("shutdown complete")
-			}
-
-			for _, service := range *svcs {
-				if stop, err := runner.Run(context.Background(), &service); err != nil {
-					gracefulShutdown()
-					utils.Logger().Fatal(err)
-				} else {
-					stops = append(stops, stop)
-				}
-			}
-
-			// Block until we get a signal.
-			<-ctx.Done()
-
-			gracefulShutdown()
+	// run supabase services
+	runner, err := services.NewRunner("supago-main-test-net")
+	if err != nil {
+		panic(err)
+	}
+	for _, service := range *svcs {
+		if err := runner.Run(context.Background(), &service); err != nil {
+			utils.Logger().Fatal(err)
 		}
 	}
+	utils.Logger().Infof("all services started")
+
+	<-ctx.Done() // block until we get a stop signal
+
+	utils.Logger().Warn("shutdown signal received")
+
+	// shutdown each utility
+	runner.Shutdown()
+
+	utils.Logger().Debugf("main context done")
 }

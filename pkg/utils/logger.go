@@ -12,8 +12,14 @@ func Logger() *zap.SugaredLogger {
 	return logger
 }
 
+// OverrideLogger replace the logger used by supago with a custom logger
+// To disable logging, use zap.NewNop().Sugar() or the DisableLogger() method
 func OverrideLogger(lgr *zap.SugaredLogger) {
 	logger = lgr
+}
+
+func DisableLogger() *zap.SugaredLogger {
+	return zap.NewNop().Sugar()
 }
 
 func NewLogger(LogLevel zapcore.Level, LogJsonFmt bool) (*zap.SugaredLogger, error) {
