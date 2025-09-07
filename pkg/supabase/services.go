@@ -10,6 +10,7 @@ import (
 	"github.com/train360-corp/supago/pkg/services/postgres"
 	"github.com/train360-corp/supago/pkg/services/postgrest"
 	"github.com/train360-corp/supago/pkg/services/realtime"
+	"github.com/train360-corp/supago/pkg/services/storage"
 	"github.com/train360-corp/supago/pkg/services/studio"
 	"github.com/train360-corp/supago/pkg/types"
 	"github.com/train360-corp/supago/pkg/utils"
@@ -117,9 +118,27 @@ func GetServices(config *Config) (*[]types.Service, error) {
 			Password: config.DashboardPassword,
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("failed to construct gateway service: %v", err)
+		return nil, fmt.Errorf("failed to construct kong service: %v", err)
 	} else {
 		services = append(services, *gateway)
+	}
+
+	// add supabase storage
+	fs, err := storage.Service(storage.Props{
+		Keys: storage.Keys{
+			Public:  config.PublicJwtKey,
+			Private: config.PrivateJwtKey,
+			Secret:  config.JwtSecret,
+		},
+		Database: storage.Database{
+			Password: config.DatabasePassword,
+		},
+		Storage: storage.Storage{
+			Dir: config.StorageDirectory,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct storage service: %v", err)
 	}
 
 	// add remaining services
@@ -127,6 +146,7 @@ func GetServices(config *Config) (*[]types.Service, error) {
 		*analytics.Service(config.DatabasePassword, config.LogFlarePublicKey, config.LogFlarePrivateKey),
 		*meta.Service(config.DatabasePassword),
 		*postgrest.Service(config.DatabasePassword, config.JwtSecret),
+		*fs, // must be after db, imgproxy, and postgrest
 		*realtime.Service(config.DatabasePassword, config.PublicJwtKey, config.JwtSecret),
 		*studio.Service(studio.Props{
 			Keys: studio.Keys{
