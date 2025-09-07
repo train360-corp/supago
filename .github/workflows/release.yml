@@ -88,7 +88,7 @@ jobs:
         run: |
           # Get previous and new tag
           prev_tag=$(git tag --sort=version:refname | tail -n2 | head -n1 || true)
-          new_tag="${{ steps.bump.outputs.new_tag }}"
+          new_tag="${{ steps.bump.outputs.tag }}"
           
           if [ -z "$prev_tag" ]; then
           range=""
@@ -113,6 +113,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.bump.outputs.new_tag }}
+          tag_name: ${{ steps.bump.outputs.tag }}
           body: ${{ steps.changelog.outputs.release_notes }}
           make_latest: true
