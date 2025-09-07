@@ -46,9 +46,21 @@ Unsupported (for now):
 
 ## 🛠️ Usage
 
+> Requires docker on the local machine
+
+### QuickStart
+
+```shell
+go run github.com/train360-corp/supago
+```
+
+### Direct Integration
+
+Directly integrate SupaGo into your freestanding project!
+
 Add the repository:
 
-```sh
+```shell
 go get github.com/train360-corp/supago
 ```
 
