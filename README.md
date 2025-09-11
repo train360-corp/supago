@@ -120,7 +120,7 @@ func main() {
 		panic(err)
 	}
 	for _, service := range *svcs {
-		if err := runner.Run(context.Background(), &service); err != nil {
+		if err := runner.Run(ctx, &service); err != nil {
 			runner.Shutdown() // cancel running services
 			utils.Logger().Fatal(err)
 		}
