@@ -118,17 +118,8 @@ func (runner *Runner) RunC(parent context.Context, svc *types.Service) (context.
 	var ctr *container.CreateResponse
 
 	utils.Logger().Infof("starting %v", svc)
-	ctx, done := context.WithCancelCause(parent)
-	if !runner.isProperlyInitialized {
-		utils.Logger().Debugf("detected improperly initialized Runner")
-		err := fmt.Errorf("runner not properly initialized; Runner should not be directly instantiated (call the services.NewRunner(...) func instead)")
-		done(err)
-		return ctx, err
-	}
-
-	go func() {
-		<-ctx.Done()
-
+	ctx, _done := context.WithCancelCause(parent)
+	done := func(e error) {
 		stopOptions := container.StopOptions{
 			Timeout: utils.Pointer(15),
 		}
@@ -175,7 +166,15 @@ func (runner *Runner) RunC(parent context.Context, svc *types.Service) (context.
 				utils.Logger().Debugf("removed %v container", svc)
 			}
 		}
-	}()
+		_done(e) // cancel context from closure
+	}
+
+	if !runner.isProperlyInitialized {
+		utils.Logger().Debugf("detected improperly initialized Runner")
+		err := fmt.Errorf("runner not properly initialized; Runner should not be directly instantiated (call the services.NewRunner(...) func instead)")
+		done(err)
+		return ctx, err
+	}
 
 	// ensure network exists
 	if err := runner.ensureNetwork(ctx); err != nil {
