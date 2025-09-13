@@ -80,6 +80,148 @@ func (runner *Runner) Shutdown() {
 	utils.Logger().Warn("shutdown complete")
 }
 
+func (runner *Runner) healthcheck(ctx context.Context, svc *types.Service, ctr *container.CreateResponse, retry int) error {
+
+	utils.Logger().Debugf("checking %v container %s health (retry=%d)", svc, utils.ShortStr(ctr.ID), retry)
+	inspected, err := runner.docker.ContainerInspect(ctx, ctr.ID)
+	if err != nil {
+		utils.Logger().Errorf("unable to check %v container %s health: %v", svc, utils.ShortStr(ctr.ID), err)
+		return fmt.Errorf("unable to check %v container %s health: %v", svc, utils.ShortStr(ctr.ID), err)
+	}
+
+	if inspected.State != nil && inspected.State.Health != nil {
+		switch inspected.State.Health.Status {
+		case container.NoHealthcheck:
+			utils.Logger().Warnf("%v container %s does not have a health-check (continuing)", svc, utils.ShortStr(ctr.ID))
+			return nil
+		case container.Healthy:
+			utils.Logger().Debugf("%v container %s is healthy (continuing)", svc, utils.ShortStr(ctr.ID))
+			return nil
+		case container.Starting:
+			utils.Logger().Debugf("%v container %s is still starting (retrying in 5 seconds...)", svc, utils.ShortStr(ctr.ID))
+			time.Sleep(5 * time.Second)
+			return runner.healthcheck(ctx, svc, ctr, retry+1)
+		case container.Unhealthy:
+			utils.Logger().Errorf("%v container %s is unhealthy", svc, utils.ShortStr(ctr.ID))
+			return fmt.Errorf("%v container %s is unhealthy", svc, utils.ShortStr(ctr.ID))
+		default:
+			utils.Logger().Errorf("%v container %s unhandled status: %v", svc, utils.ShortStr(ctr.ID), inspected.State.Health.Status)
+			return fmt.Errorf("%v container %s unhandled status: %v", svc, utils.ShortStr(ctr.ID), inspected.State.Health.Status)
+		}
+	}
+
+	return nil
+}
+
+func (runner *Runner) RunC(parent context.Context, svc *types.Service) (context.Context, error) {
+
+	utils.Logger().Infof("starting %v", svc)
+	ctx, done := context.WithCancelCause(parent)
+	if !runner.isProperlyInitialized {
+		utils.Logger().Debugf("detected improperly initialized Runner")
+		err := fmt.Errorf("runner not properly initialized; Runner should not be directly instantiated (call the services.NewRunner(...) func instead)")
+		done(err)
+		return ctx, err
+	}
+
+	// ensure network exists
+	if err := runner.ensureNetwork(ctx); err != nil {
+		done(err)
+		return ctx, err
+	}
+
+	// pull image
+	if err := runner.pull(ctx, svc); err != nil {
+		done(err)
+		return ctx, err
+	}
+
+	// create container
+	ctr, err := runner.create(ctx, svc)
+	if err != nil {
+		done(err)
+		return ctx, err
+	}
+
+	// start container
+	utils.Logger().Debugf("starting %v conainter %s", svc, utils.ShortStr(ctr.ID))
+	if err := runner.docker.ContainerStart(ctx, ctr.ID, container.StartOptions{}); err != nil {
+		e := fmt.Errorf("failed to start %v container: %v", svc, err)
+		utils.Logger().Error(e)
+		done(e)
+		return ctx, e
+	}
+
+	// listen to status
+	utils.Logger().Debugf("listening to %v container %s status", svc, utils.ShortStr(ctr.ID))
+	statusCh, errCh := runner.docker.ContainerWait(ctx, ctr.ID, container.WaitConditionNotRunning)
+	go func() {
+		select {
+		case err := <-errCh:
+			var e string
+			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				e = fmt.Sprintf("wait error for %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
+				utils.Logger().Errorf(e)
+				done(fmt.Errorf(e))
+			} else {
+				e = fmt.Sprintf("wait exited (context-cancelled) for %v container %s", svc, utils.ShortStr(ctr.ID))
+				utils.Logger().Debugf(e)
+				done(nil)
+			}
+		case st := <-statusCh: // container exited (possibly immediately)
+			e := fmt.Errorf("%v container %s exited with status: %v", svc, utils.ShortStr(ctr.ID), st)
+			utils.Logger().Error(e)
+			done(e)
+		}
+	}()
+
+	// perform healthcheck
+	if err := runner.healthcheck(ctx, svc, ctr, 0); err != nil {
+		done(err)
+		return ctx, err
+	}
+
+	// after start
+	if svc.AfterStart != nil {
+		if err := svc.AfterStart(ctx, runner.docker, ctr.ID); err != nil {
+			e := fmt.Errorf("AfterStart failed for %v: %v", svc, err)
+			utils.Logger().Error(e.Error())
+			done(e)
+			return ctx, e
+		}
+	}
+
+	// attach to container (keep this connection open while app is alive)
+	if att, err := runner.docker.ContainerAttach(ctx, ctr.ID, container.AttachOptions{
+		Stdin:  true,
+		Stream: true,
+		Stdout: false,
+		Stderr: false,
+	}); err != nil {
+		e := fmt.Errorf("attach failed for %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
+		utils.Logger().Errorf(e.Error())
+		done(e)
+		return ctx, e
+	} else {
+		stop := func() {
+			utils.Logger().Debugf("stop and detach sequence triggered for %v container %s", svc, utils.ShortStr(ctr.ID))
+			if err := att.CloseWrite(); err != nil {
+				utils.Logger().Errorf("failed to close stdin for %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
+			}
+			att.Close()
+			done(nil)
+			utils.Logger().Debugf("completed stop and detach sequence for %v container %s", svc, utils.ShortStr(ctr.ID))
+		}
+		stops := append(*runner.stopFuncs, &stop)
+		runner.stopFuncs = &stops
+
+		utils.Logger().Infof("started %v (container %s)", svc, utils.ShortStr(ctr.ID))
+		return ctx, nil
+	}
+}
+
+// Run runs a service, returning an error if an *initialization* error occurs
+// To watch for errors, use RunC, which returns a ContextWithCause
 func (runner *Runner) Run(ctx context.Context, svc *types.Service) error {
 
 	var ctr *container.CreateResponse
