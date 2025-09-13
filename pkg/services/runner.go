@@ -143,7 +143,7 @@ func (runner *Runner) RunC(parent context.Context, svc *types.Service) (context.
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(*stopOptions.Timeout)*time.Second)
 		defer cancel()
 		if ctr == nil {
-			utils.Logger().Debugf("skipping container shutdown (no container initialized)")
+			utils.Logger().Debugf("container shutdown skipped (no container initialized)")
 		} else {
 			utils.Logger().Debugf("stopping %v container %s", svc, utils.ShortStr(ctr.ID))
 			if err := runner.docker.ContainerStop(shutdownCtx, ctr.ID, stopOptions); err != nil {
@@ -157,22 +157,23 @@ func (runner *Runner) RunC(parent context.Context, svc *types.Service) (context.
 		removeCtx, cancel := context.WithTimeout(context.Background(), time.Duration(*stopOptions.Timeout)*time.Second)
 		defer cancel()
 		if ctr == nil {
-			utils.Logger().Debugf("removeContainer skipped (no container initialized)")
-		}
-		utils.Logger().Debugf("removing %v container %s ", svc, utils.ShortStr(ctr.ID))
-		if err := runner.docker.ContainerRemove(removeCtx, ctr.ID, container.RemoveOptions{
-			RemoveVolumes: true,
-			RemoveLinks:   true,
-			Force:         true,
-		}); err != nil {
-			isAlreadyShuttingDownError := regexp.MustCompile(`^Error response from daemon: removal of container [a-f0-9]+ is already in progress$`)
-			if isAlreadyShuttingDownError.MatchString(err.Error()) {
-				utils.Logger().Debugf("confirmed removal of %v container %s in progress", svc, utils.ShortStr(ctr.ID))
-			} else {
-				utils.Logger().Errorf("failed to remove %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
-			}
+			utils.Logger().Debugf("container removal skipped (no container initialized)")
 		} else {
-			utils.Logger().Debugf("removed %v container", svc)
+			utils.Logger().Debugf("removing %v container %s ", svc, utils.ShortStr(ctr.ID))
+			if err := runner.docker.ContainerRemove(removeCtx, ctr.ID, container.RemoveOptions{
+				RemoveVolumes: true,
+				RemoveLinks:   true,
+				Force:         true,
+			}); err != nil {
+				isAlreadyShuttingDownError := regexp.MustCompile(`^Error response from daemon: removal of container [a-f0-9]+ is already in progress$`)
+				if isAlreadyShuttingDownError.MatchString(err.Error()) {
+					utils.Logger().Debugf("confirmed removal of %v container %s in progress", svc, utils.ShortStr(ctr.ID))
+				} else {
+					utils.Logger().Errorf("failed to remove %v container %s: %v", svc, utils.ShortStr(ctr.ID), err)
+				}
+			} else {
+				utils.Logger().Debugf("removed %v container", svc)
+			}
 		}
 	}()
 
