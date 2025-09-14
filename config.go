@@ -59,6 +59,7 @@ type KongConfig struct {
 
 type GlobalConfig struct {
 	PlatformName string
+	DebugMode    bool
 }
 
 type Config struct {
@@ -88,6 +89,7 @@ func NewRandomConfigE(platformName string) (*Config, error) {
 	return &Config{
 		Global: GlobalConfig{
 			PlatformName: platformName,
+			DebugMode:    false,
 		},
 		Keys: *keys,
 		Database: DatabaseConfig{

@@ -173,7 +173,7 @@ func (sg *SupaGo) createContainer(ctx context.Context, svc *Service) (*container
 			Labels:       svc.Labels,
 		},
 		&container.HostConfig{
-			AutoRemove:    true, // like --rm
+			AutoRemove:    !sg.config.Global.DebugMode,
 			RestartPolicy: container.RestartPolicy{Name: "no"},
 			NetworkMode:   container.NetworkMode(sg.network.Name),
 			Mounts:        svc.Mounts,
