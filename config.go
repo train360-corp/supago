@@ -3,6 +3,7 @@ package supago
 import (
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/train360-corp/supago/internal/services/kong"
 	"github.com/train360-corp/supago/internal/utils"
 	"os"
 	"path/filepath"
@@ -110,7 +111,7 @@ func NewRandomConfigE(platformName string) (*Config, error) {
 		Kong: KongConfig{
 			URLs: KongURLsConfig{
 				Site: "http://127.0.0.1:3000",
-				Kong: "http://127.0.0.1:8000",
+				Kong: fmt.Sprintf("http://%s:8000", containerName(Config{Global: GlobalConfig{PlatformName: platformName}}, kong.ContainerName)),
 			},
 			SMTP: KongSMTPConfig{
 				Host: "supabase-mail",

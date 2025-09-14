@@ -6,3 +6,5 @@ import (
 
 //go:embed kong.yml
 var ConfigFile []byte
+
+const ContainerName = "supago-kong"

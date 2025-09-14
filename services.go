@@ -194,7 +194,7 @@ func (T TServices) Kong(config Config) *Service {
 
 	return &Service{
 		Image:   "kong:2.8.1",
-		Name:    containerName(config, "supago-kong"),
+		Name:    containerName(config, kong.ContainerName),
 		Aliases: []string{"kong"},
 		Ports: []uint16{
 			8000,
