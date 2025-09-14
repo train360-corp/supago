@@ -94,7 +94,9 @@ func (sg *SupaGo) Stop() {
 				service.closeConn()
 			}
 			sg.stopContainer(service)
-			sg.removeContainer(service)
+			if !sg.config.Global.DebugMode {
+				sg.removeContainer(service)
+			}
 		}(sg.services[len(sg.services)-i-1]) // in reverse (for dependencies)
 	}
 }
