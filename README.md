@@ -48,14 +48,6 @@ Unsupported (for now):
 
 > Requires docker on the local machine
 
-### QuickStart
-
-```shell
-go run github.com/train360-corp/supago
-```
-
-### Direct Integration
-
 Directly integrate SupaGo into your freestanding project!
 
 Add the repository:
@@ -67,78 +59,39 @@ go get github.com/train360-corp/supago
 Run a basic Supabase instance:
 
 ```go
-
 package main
 
 import (
 	"context"
-	"fmt"
-	"github.com/train360-corp/supago/pkg/services"
-	"github.com/train360-corp/supago/pkg/supabase"
-	"github.com/train360-corp/supago/pkg/utils"
+	"github.com/train360-corp/supago"
 	"go.uber.org/zap/zapcore"
-	"os"
 	"os/signal"
-	"path/filepath"
+	"syscall"
 )
 
 func main() {
-	cwd, err := os.Getwd()
-	if err != nil {
-		panic(fmt.Sprintf("failed to get current working directory: %v", err))
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	logger := supago.NewOpinionatedLogger(zapcore.InfoLevel, false)
+	logger.Infof("SupaGo starting")
+
+	sg := supago.New(*supago.NewRandomConfig("my-example-project")).
+		SetLogger(logger).
+		AddServices(supago.Services.All())
+
+	if err := sg.RunForcefully(ctx); err != nil {
+		logger.Errorf("an error occured while running services: %v", err)
 	}
 
-	// setup custom logger
-	if logger, err := utils.NewLogger(zapcore.InfoLevel, false); err != nil {
-		panic(err)
-	} else {
-		utils.OverrideLogger(logger)
-	}
-	defer utils.Logger().Sync()
+	// TODO: run custom backend services, interact with supabase, etc.
 
-	// Create a root ctx that is canceled on SIGINT/SIGTERM.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
+	<-ctx.Done() // block until done
 
-	// create config to run supabase
-	config, err := supabase.GetRandomConfig()
-	if err != nil {
-		panic(fmt.Sprintf("failed to generate supabase config: %v", err))
-	}
-	config.DatabaseDataDirectory = filepath.Join(cwd, "data", "postgres")
-	config.StorageDirectory = filepath.Join(cwd, "data", "storage")
+	logger.Warnf("stop-signal recieved")
 
-	// get supabase services from config
-	svcs, err := supabase.GetServices(config)
-	if err != nil {
-		panic(err)
-	}
-
-	// run supabase services
-	runner, err := services.NewRunner("supago-main-test-net")
-	if err != nil {
-		panic(err)
-	}
-	for _, service := range *svcs {
-		if err := runner.Run(ctx, &service); err != nil {
-			runner.Shutdown() // cancel running services
-			utils.Logger().Fatal(err)
-		}
-	}
-	utils.Logger().Infof("all services started")
-	
-	// TODO: 
-	// - INTEGRATE/START YOUR OWN SERVER/SERVICES HERE
-	// - INTERACT WITH SUPABASE
-	// - ETC...
-
-	<-ctx.Done() // block until we get a stop signal
-
-	utils.Logger().Warn("shutdown signal received")
-
-	// shutdown each utility
-	runner.Shutdown()
-
-	utils.Logger().Debugf("main context done")
+	sg.Stop() // shutdown services
 }
+
 ```
