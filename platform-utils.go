@@ -166,14 +166,14 @@ func (sg *SupaGo) createContainer(ctx context.Context, svc *Service) (*container
 			Entrypoint:   svc.Entrypoint,
 			Cmd:          svc.Cmd,
 			Env:          svc.Env,
-			OpenStdin:    true,  // keep a stdin pipe open from our process
-			StdinOnce:    true,  // when our stdin attach disconnects, close container's STDIN
-			Tty:          false, // keep streams multiplexed for stdcopy
+			OpenStdin:    false,
+			StdinOnce:    false,
+			Tty:          false,
 			ExposedPorts: exposedPorts,
 			Labels:       svc.Labels,
 		},
 		&container.HostConfig{
-			AutoRemove:    !sg.config.Global.DebugMode,
+			AutoRemove:    false,
 			RestartPolicy: container.RestartPolicy{Name: "no"},
 			NetworkMode:   container.NetworkMode(sg.network.Name),
 			Mounts:        svc.Mounts,
