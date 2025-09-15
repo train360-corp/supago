@@ -251,10 +251,22 @@ func (T TServices) Postgres(config Config) *Service {
 		panic(fmt.Sprintf("postgres data directory \"%s\" exists but is not a directory", config.Database.DataDirectory))
 	}
 
+	if info, err := os.Stat(config.Database.ConfigDirectory); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(config.Database.ConfigDirectory, 0o700); err != nil {
+				panic(fmt.Sprintf("postgres config directory \"%s\" does not exist and an error occurred while trying to create it: %v", config.Database.ConfigDirectory, err))
+			}
+		} else {
+			panic(fmt.Sprintf("error checking postgres config directory \"%s\" exists: %v", config.Database.ConfigDirectory, err))
+		}
+	} else if !info.IsDir() {
+		panic(fmt.Sprintf("postgres config directory \"%s\" exists but is not a directory", config.Database.ConfigDirectory))
+	}
+
 	mounts := []mount.Mount{
 		{
-			Type:   mount.TypeVolume,
-			Source: "db-config",
+			Type:   mount.TypeBind,
+			Source: config.Database.ConfigDirectory,
 			Target: "/etc/postgresql-custom",
 		},
 		{

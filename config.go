@@ -26,8 +26,9 @@ type DashboardConfig struct {
 }
 
 type DatabaseConfig struct {
-	DataDirectory string
-	Password      string
+	DataDirectory   string
+	ConfigDirectory string
+	Password        string
 }
 
 type LogFlareConfig struct {
@@ -94,8 +95,9 @@ func NewRandomConfigE(platformName string) (*Config, error) {
 		},
 		Keys: *keys,
 		Database: DatabaseConfig{
-			DataDirectory: filepath.Join(wd, "postgres", "data"),
-			Password:      utils.RandomString(32),
+			ConfigDirectory: filepath.Join(wd, "postgres", "config"),
+			DataDirectory:   filepath.Join(wd, "postgres", "data"),
+			Password:        utils.RandomString(32),
 		},
 		Storage: StorageConfig{
 			DataDirectory: filepath.Join(wd, "storage", "data"),
