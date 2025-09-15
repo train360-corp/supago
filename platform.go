@@ -195,8 +195,8 @@ func (sg *SupaGo) run(ctx context.Context, forcefully bool) error {
 		if att, err := sg.docker.ContainerAttach(context.Background(), service.container.ID, container.AttachOptions{
 			Stdin:  true,
 			Stream: true,
-			Stdout: false,
-			Stderr: false,
+			Stdout: sg.config.Global.DebugMode,
+			Stderr: sg.config.Global.DebugMode,
 		}); err != nil {
 			sg.logger.Errorf("attach failed for %v container %s: %v", service, utils.ShortStr(service.container.ID), err)
 		} else {
