@@ -16,7 +16,7 @@ func main() {
 	logger := supago.NewOpinionatedLogger(zapcore.InfoLevel, false)
 	logger.Infof("SupaGo starting")
 
-	sg := supago.New(*supago.NewRandomConfig("my-example-project")).
+	sg := supago.New(*supago.NewRandomConfig("example-project")).
 		SetLogger(logger).
 		AddServices(supago.Services.All())
 

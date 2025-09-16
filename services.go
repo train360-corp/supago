@@ -2,6 +2,8 @@ package supago
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
@@ -10,6 +12,7 @@ import (
 	postgres "github.com/train360-corp/supago/internal/services/postgres/embeds"
 	"github.com/train360-corp/supago/internal/utils"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -239,6 +242,7 @@ func (T TServices) Meta(config Config) *Service {
 
 func (T TServices) Postgres(config Config) *Service {
 
+	// folder for storing database data
 	if info, err := os.Stat(config.Database.DataDirectory); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.MkdirAll(config.Database.DataDirectory, 0o700); err != nil {
@@ -251,6 +255,7 @@ func (T TServices) Postgres(config Config) *Service {
 		panic(fmt.Sprintf("postgres data directory \"%s\" exists but is not a directory", config.Database.DataDirectory))
 	}
 
+	// folder for storing custom db files
 	if info, err := os.Stat(config.Database.ConfigDirectory); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.MkdirAll(config.Database.ConfigDirectory, 0o700); err != nil {
@@ -263,11 +268,30 @@ func (T TServices) Postgres(config Config) *Service {
 		panic(fmt.Sprintf("postgres config directory \"%s\" exists but is not a directory", config.Database.ConfigDirectory))
 	}
 
+	// pg sodium key file
+	pgSodiumRootKeyFile := filepath.Join(config.Database.ConfigDirectory, "pgsodium_root.key")
+	if info, err := os.Stat(pgSodiumRootKeyFile); err != nil {
+		if os.IsNotExist(err) {
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err != nil {
+				panic(fmt.Sprintf("postgres pgsodium key file \"%s\" does not exist and an error occurred while trying to create it: %v", pgSodiumRootKeyFile, err))
+			}
+			if err := os.WriteFile(pgSodiumRootKeyFile, []byte(hex.EncodeToString(b)), 0o700); err != nil {
+				panic(fmt.Sprintf("postgres pgsodium key file \"%s\" does not exist and an error occurred while trying to create it: %v", pgSodiumRootKeyFile, err))
+			}
+		} else {
+			panic(fmt.Sprintf("error checking postgres pgsodium key file \"%s\" exists: %v", pgSodiumRootKeyFile, err))
+		}
+	} else if info.IsDir() {
+		panic(fmt.Sprintf("postgres pgsodium key file \"%s\" exists but is not a file", pgSodiumRootKeyFile))
+	}
+
 	mounts := []mount.Mount{
 		{
-			Type:   mount.TypeBind,
-			Source: config.Database.ConfigDirectory,
-			Target: "/etc/postgresql-custom",
+			Type:     mount.TypeBind,
+			Source:   pgSodiumRootKeyFile,
+			Target:   "/etc/postgresql-custom/pgsodium_root.key",
+			ReadOnly: true,
 		},
 		{
 			Type:   mount.TypeBind,
@@ -276,7 +300,7 @@ func (T TServices) Postgres(config Config) *Service {
 		},
 	}
 
-	files := []EmbeddedFile{
+	for _, file := range []EmbeddedFile{
 		{
 			Name: "realtime.sql",
 			Data: postgres.RealtimeSQL,
@@ -312,8 +336,7 @@ func (T TServices) Postgres(config Config) *Service {
 			Data: postgres.PoolerSQL,
 			Path: "/docker-entrypoint-initdb.d/migrations/99-pooler.sql",
 		},
-	}
-	for _, file := range files {
+	} {
 		mnt, err := file.Mount()
 		if err != nil {
 			panic(err)
