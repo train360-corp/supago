@@ -276,7 +276,7 @@ func (sg *SupaGo) removeContainer(service *Service) {
 		sg.logger.Debugf("removing %v container %s ", service, utils.ShortStr(service.container.ID))
 		if err := sg.docker.ContainerRemove(removeCtx, service.container.ID, container.RemoveOptions{
 			RemoveVolumes: true,
-			RemoveLinks:   true,
+			RemoveLinks:   false, // causing bugs when true
 			Force:         true,
 		}); err != nil {
 			isAlreadyShuttingDownError := regexp.MustCompile(`^Error response from daemon: removal of container [a-f0-9]+ is already in progress$`)
