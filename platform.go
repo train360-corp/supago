@@ -27,12 +27,16 @@ type SupaGo struct {
 	network  *network.Summary
 }
 
-func New(config Config) *SupaGo {
+func constructor(config Config) *SupaGo {
 	return &SupaGo{
 		config:   config,
 		logger:   zap.NewNop().Sugar(),
 		services: []*Service{},
 	}
+}
+
+func New(config *Config) *SupaGo {
+	return constructor(*config)
 }
 
 func (sg *SupaGo) SetLogger(logger *zap.SugaredLogger) *SupaGo {

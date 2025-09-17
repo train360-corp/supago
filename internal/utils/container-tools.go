@@ -21,15 +21,15 @@ func CopyToContainer(
 	docker *client.Client,
 	cid string,
 	file struct {
-		Data []byte
-		Path string // absolute path inside container, e.g. "/etc/postgresql-custom/postgresql.custom.conf"
-	},
+	Data []byte
+	Path string // absolute path inside container, e.g. "/etc/postgresql-custom/postgresql.custom.conf"
+},
 ) error {
 	if file.Path == "" || !strings.HasPrefix(file.Path, "/") {
 		return fmt.Errorf("container path must be absolute, got %q", file.Path)
 	}
 
-	// Build a tar that places the file at its absolute path by extracting under "/"
+	// BuildE a tar that places the file at its absolute path by extracting under "/"
 	rel := strings.TrimPrefix(file.Path, "/")
 	if rel == "" || rel == "." || strings.Contains(rel, "..") {
 		return fmt.Errorf("invalid container path %q", file.Path)

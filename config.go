@@ -74,24 +74,12 @@ type Config struct {
 	Kong      KongConfig
 }
 
-// NewBaseConfigE like NewBaseConfig, but returns an error instead of panic-ing
-func NewBaseConfigE(platformName string, keyGetter EncryptionKeyGetter) (*Config, error) {
+func newBaseConfig(platformName string) (*Config, error) {
 	jwtSecret := utils.RandomString(32)
 
 	keys, err := getJwtKeysConfig(jwtSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct jwt keys config: %v", err)
-	}
-
-	// patch encryption key
-	if encryptionKey, err := keyGetter(); err != nil {
-		return nil, err
-	} else {
-		if _, err := IsValidEncryptionKey(encryptionKey); err != nil {
-			return nil, fmt.Errorf("failed to validate encryption key: %v", err)
-		} else {
-			keys.PgSodiumEncryption = encryptionKey
-		}
 	}
 
 	wd, err := os.Getwd()
@@ -137,16 +125,6 @@ func NewBaseConfigE(platformName string, keyGetter EncryptionKeyGetter) (*Config
 			},
 		},
 	}, nil
-}
-
-// NewBaseConfig generates a Config object using random values
-// Safe base-config to customize from (minimum required to run SupaGo/Supabase)
-func NewBaseConfig(platformName string, keyGetter EncryptionKeyGetter) *Config {
-	cfg, err := NewBaseConfigE(platformName, keyGetter)
-	if err != nil {
-		panic(err)
-	}
-	return cfg
 }
 
 // getJwtKeysConfig returns deterministic JWTs (as a KeysConfig) pre-configured for Supabase, based on a fixed secret
