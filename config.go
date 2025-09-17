@@ -74,11 +74,11 @@ type Config struct {
 	Kong      KongConfig
 }
 
-// NewRandomConfigE like NewRandomConfig, but returns an error instead of panic-ing
-func NewRandomConfigE(platformName string, keyGetter EncryptionKeyGetter) (*Config, error) {
+// NewBaseConfigE like NewBaseConfig, but returns an error instead of panic-ing
+func NewBaseConfigE(platformName string, keyGetter EncryptionKeyGetter) (*Config, error) {
 	jwtSecret := utils.RandomString(32)
 
-	keys, err := GetJwtKeysConfig(jwtSecret)
+	keys, err := getJwtKeysConfig(jwtSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct jwt keys config: %v", err)
 	}
@@ -87,7 +87,11 @@ func NewRandomConfigE(platformName string, keyGetter EncryptionKeyGetter) (*Conf
 	if encryptionKey, err := keyGetter(); err != nil {
 		return nil, err
 	} else {
-		keys.PgSodiumEncryption = encryptionKey
+		if _, err := IsValidEncryptionKey(encryptionKey); err != nil {
+			return nil, fmt.Errorf("failed to validate encryption key: %v", err)
+		} else {
+			keys.PgSodiumEncryption = encryptionKey
+		}
 	}
 
 	wd, err := os.Getwd()
@@ -135,18 +139,18 @@ func NewRandomConfigE(platformName string, keyGetter EncryptionKeyGetter) (*Conf
 	}, nil
 }
 
-// NewRandomConfig generates a Config object using random values
-// Safe base-config to customize from
-func NewRandomConfig(platformName string, keyGetter EncryptionKeyGetter) *Config {
-	cfg, err := NewRandomConfigE(platformName, keyGetter)
+// NewBaseConfig generates a Config object using random values
+// Safe base-config to customize from (minimum required to run SupaGo/Supabase)
+func NewBaseConfig(platformName string, keyGetter EncryptionKeyGetter) *Config {
+	cfg, err := NewBaseConfigE(platformName, keyGetter)
 	if err != nil {
 		panic(err)
 	}
 	return cfg
 }
 
-// GetJwtKeysConfig returns deterministic JWTs (as a KeysConfig) pre-configured for Supabase, based on a fixed secret
-func GetJwtKeysConfig(jwtSecret string) (*KeysConfig, error) {
+// getJwtKeysConfig returns deterministic JWTs (as a KeysConfig) pre-configured for Supabase, based on a fixed secret
+func getJwtKeysConfig(jwtSecret string) (*KeysConfig, error) {
 
 	// Fixed issued-at: 01 Jan 2025 00:00:00 UTC
 	issuedAt := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC).Unix()

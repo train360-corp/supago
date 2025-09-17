@@ -86,7 +86,7 @@ func main() {
 
 	logger.Infof("SupaGo starting")
 
-	sg := supago.New(*supago.NewRandomConfig("example-project", encryptionKey)).
+	sg := supago.New(*supago.NewBaseConfig("example-project", encryptionKey)).
 		SetLogger(logger).
 		AddServices(supago.Services.All)
 	// alternatively, add individual services as needed; e.g.:

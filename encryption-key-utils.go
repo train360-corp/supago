@@ -20,6 +20,23 @@ func createEncryptionKeyFile(path string) error {
 	return nil
 }
 
+func IsValidEncryptionKey(key string) (bool, error) {
+
+	if len(key) != 64 { // Must be 64 hex chars (32 bytes)
+		return false, fmt.Errorf("invalid key length: got %d chars, want 64 hex chars", len(key))
+	}
+
+	// Validate hex and canonicalize
+	raw, err := hex.DecodeString(key)
+	if err != nil {
+		return false, fmt.Errorf("invalid hex in key: %w", err)
+	} else if hex.EncodeToString(raw) != key {
+		return false, fmt.Errorf("invalid hex in key: %s", "reverse encode failed")
+	}
+
+	return true, nil
+}
+
 // readEncryptionKeyFile returns the validated, canonical lowercase hex string.
 // It enforces perms <= 0600 and 64 hex chars (32 bytes).
 func readEncryptionKeyFile(path string) (string, error) {
@@ -46,18 +63,9 @@ func readEncryptionKeyFile(path string) (string, error) {
 
 	// Trim whitespace/newlines
 	s := strings.TrimSpace(string(data))
-
-	// Must be 64 hex chars (32 bytes)
-	if len(s) != 64 {
-		return "", fmt.Errorf("invalid key length in %q: got %d chars, want 64 hex chars", path, len(s))
+	if _, err := IsValidEncryptionKey(s); err != nil {
+		return "", fmt.Errorf("invalid key file %q: %w", path, err)
+	} else {
+		return s, nil
 	}
-
-	// Validate hex and canonicalize
-	raw, err := hex.DecodeString(s)
-	if err != nil {
-		return "", fmt.Errorf("invalid hex in key file %q: %w", path, err)
-	}
-
-	// Return canonical lowercase hex (re-encode) so callers get normalized value
-	return hex.EncodeToString(raw), nil
 }
