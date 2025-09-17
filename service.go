@@ -33,3 +33,9 @@ type Service struct {
 func (s Service) String() string {
 	return fmt.Sprintf("Service[%s]", s.Name)
 }
+
+func (s Service) Build() ServiceConstructor {
+	return func(Config) Service {
+		return s
+	}
+}
