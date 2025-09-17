@@ -45,29 +45,28 @@ func (sg *SupaGo) SetLogger(logger *zap.SugaredLogger) *SupaGo {
 	return sg
 }
 
-func (sg *SupaGo) AddServices(services AllServices) *SupaGo {
+func (sg *SupaGo) AddServices(constructors func() []ServiceConstructor) *SupaGo {
 	sg.mu.Lock()
 	defer sg.mu.Unlock()
 	if sg.services == nil {
 		sg.services = []*Service{}
 	}
-	for _, service := range *services(sg.config) {
-		sg.services = append(sg.services, service)
+	for _, constructor := range constructors() {
+		sg.services = append(sg.services, utils.Pointer(constructor(sg.config)))
 	}
 	return sg
 }
 
-func (sg *SupaGo) AddService(service *Service, services ...*Service) *SupaGo {
+func (sg *SupaGo) AddService(constructor ServiceConstructor, constructors ...ServiceConstructor) *SupaGo {
 	sg.mu.Lock()
 	defer sg.mu.Unlock()
-
 	if sg.services == nil {
 		sg.services = []*Service{}
 	}
-	sg.services = append(
-		append(sg.services, service),
-		services...,
-	)
+	sg.services = append(sg.services, utils.Pointer(constructor(sg.config)))
+	for _, constructor := range constructors {
+		sg.services = append(sg.services, utils.Pointer(constructor(sg.config)))
+	}
 	return sg
 }
 
@@ -146,6 +145,20 @@ func (sg *SupaGo) run(ctx context.Context, forcefully bool) error {
 			return err
 		} else {
 			service.container = ctr
+		}
+
+		// write any embedded files
+		for _, file := range service.EmbeddedFiles {
+			if err := utils.CopyToContainer(
+				ctx,
+				sg.docker,
+				service.container.ID,
+				file,
+			); err != nil {
+				e := fmt.Sprintf("failed to create file in container: %v", err)
+				sg.logger.Error(e)
+				return errors.New(e)
+			}
 		}
 
 		// start container

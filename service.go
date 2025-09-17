@@ -10,21 +10,24 @@ import (
 )
 
 type Service struct {
-	Image       string
-	Name        string
-	Aliases     []string
-	Entrypoint  []string
-	Cmd         []string
-	Env         []string
-	Labels      map[string]string
-	Mounts      []mount.Mount
-	Ports       []uint16
-	Healthcheck *container.HealthConfig
-	StopSignal  *string
-	StopTimeout *time.Duration
-	AfterStart  func(ctx context.Context, docker *client.Client, containerID string) error
-	container   *container.CreateResponse
-	closeConn   func()
+	Image      string
+	Name       string
+	Aliases    []string
+	Entrypoint []string
+	Cmd        []string
+	Env        []string
+	Labels     map[string]string
+	// Mounts for local files/volumes mounted into the fs
+	Mounts []mount.Mount
+	// EmbeddedFiles for byte contents copied directly into the fs
+	EmbeddedFiles []EmbeddedFile
+	Ports         []uint16
+	Healthcheck   *container.HealthConfig
+	StopSignal    *string
+	StopTimeout   *time.Duration
+	AfterStart    func(ctx context.Context, docker *client.Client, containerID string) error
+	container     *container.CreateResponse
+	closeConn     func()
 }
 
 func (s Service) String() string {

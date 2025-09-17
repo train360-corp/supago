@@ -11,9 +11,10 @@ import (
 )
 
 type KeysConfig struct {
-	JwtSecret  string
-	PublicJwt  string
-	PrivateJwt string
+	JwtSecret          string
+	PublicJwt          string
+	PrivateJwt         string
+	PgSodiumEncryption string
 }
 
 type StorageConfig struct {
@@ -26,9 +27,8 @@ type DashboardConfig struct {
 }
 
 type DatabaseConfig struct {
-	DataDirectory   string
-	ConfigDirectory string
-	Password        string
+	DataDirectory string
+	Password      string
 }
 
 type LogFlareConfig struct {
@@ -75,12 +75,19 @@ type Config struct {
 }
 
 // NewRandomConfigE like NewRandomConfig, but returns an error instead of panic-ing
-func NewRandomConfigE(platformName string) (*Config, error) {
+func NewRandomConfigE(platformName string, keyGetter EncryptionKeyGetter) (*Config, error) {
 	jwtSecret := utils.RandomString(32)
 
 	keys, err := GetJwtKeysConfig(jwtSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct jwt keys config: %v", err)
+	}
+
+	// patch encryption key
+	if encryptionKey, err := keyGetter(); err != nil {
+		return nil, err
+	} else {
+		keys.PgSodiumEncryption = encryptionKey
 	}
 
 	wd, err := os.Getwd()
@@ -95,9 +102,8 @@ func NewRandomConfigE(platformName string) (*Config, error) {
 		},
 		Keys: *keys,
 		Database: DatabaseConfig{
-			ConfigDirectory: filepath.Join(wd, "postgres", "config"),
-			DataDirectory:   filepath.Join(wd, "postgres", "data"),
-			Password:        utils.RandomString(32),
+			DataDirectory: filepath.Join(wd, "postgres", "data"),
+			Password:      utils.RandomString(32),
 		},
 		Storage: StorageConfig{
 			DataDirectory: filepath.Join(wd, "storage", "data"),
@@ -131,8 +137,8 @@ func NewRandomConfigE(platformName string) (*Config, error) {
 
 // NewRandomConfig generates a Config object using random values
 // Safe base-config to customize from
-func NewRandomConfig(platformName string) *Config {
-	cfg, err := NewRandomConfigE(platformName)
+func NewRandomConfig(platformName string, keyGetter EncryptionKeyGetter) *Config {
+	cfg, err := NewRandomConfigE(platformName, keyGetter)
 	if err != nil {
 		panic(err)
 	}
